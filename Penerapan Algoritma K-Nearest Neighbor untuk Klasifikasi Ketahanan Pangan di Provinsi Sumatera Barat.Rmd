@@ -1,0 +1,168 @@
+---
+title: "KNN"
+author: "Kelompok 9"
+date: "2024-05-17"
+output: html_document
+---
+
+**Normalisasi Data**
+
+```{r}
+library(tidyverse)
+library(factoextra)
+library(cluster)
+library(ggplot2)
+```
+
+**Pemanggilan Data**
+
+```{r}
+library(readxl)
+data <- read_excel("C:/Users/ASUS/Downloads/dataset_knn.xlsx", 
+                   col_types = c("skip", "text", "numeric", "numeric", "numeric", "numeric", "numeric"))
+str(data)
+```
+
+**Memeriksa Missing Values**
+
+```{r}
+is.na(data)
+```
+
+**Menampilkan kolom yang hanya memiliki tipe data numerik**
+
+```{r}
+data.numeric <- data[2:6]
+print(data.numeric)
+```
+
+**Normalisasi Data**
+
+```{r}
+data_norm <- apply(data.numeric, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+data_norm <- as.data.frame(data_norm)
+print(data_norm)
+```
+
+**Pembagian Data Training 60% dan Data Testing 40%**
+
+```{r}
+proporsi_training <- 0.6
+```
+
+```{r}
+set.seed(123) 
+indeks <- createDataPartition(data_norm$IKP, p = proporsi_training, list = FALSE)
+training_data <- data_norm[indeks, ] # Data training
+testing_data <- data_norm[-indeks, ] # Data testing
+```
+
+```{r}
+training_data
+```
+
+```{r}
+testing_data
+```
+
+**Perhitungan Euclidean Distance**
+
+```{r}
+euclidean_distance <- function(x, y) {
+  sum((x - y)^2)^0.5
+}
+
+distances <- matrix(NA, nrow = nrow(testing_data), ncol = nrow(training_data))
+for (i in 1:nrow(testing_data)) {
+  for (j in 1:nrow(training_data)) {
+    distances[i, j] <- euclidean_distance(testing_data[i, 3:5], training_data[j, 3:5])
+  }
+}
+
+print(distances)
+```
+
+**Mengurutkan Euclidean Distance dari yang terkecil**
+
+```{r}
+sorted_indices <- order(distances)
+sort <- distances[sorted_indices]
+print(sort)
+```
+
+**Memprediksi Nilai IKP**
+
+```{r}
+library(randomForest)
+
+# Menghitung nilai IKP
+data$IKP <- (data$Ketersediaan + data$Keterjangkauan + data$Pemanfaatan) / 3
+
+# Melatih model Random Forest dengan nilai IKP sebagai target
+rf_model <- randomForest(IKP ~ Ketersediaan + Keterjangkauan + Pemanfaatan, data = data)
+
+# Memprediksi nilai IKP untuk keseluruhan data
+predicted_data <- predict(rf_model, newdata = data)
+
+# Membuat dataframe untuk menyimpan hasil prediksi
+result <- data.frame(Kabupaten = data$Kabupaten, Prediksi_IKP = predicted_data)
+
+# Menampilkan hasil prediksi
+print(result)
+```
+
+**Evaluasi Model KNN**
+
+```{r}
+library(caret)
+library(tidyverse)
+
+# Inisialisasi vektor untuk menyimpan nilai evaluasi
+mae_values <- c()
+rmse_values <- c()
+
+# Loop untuk nilai k yang berbeda
+for (k in 1:5) {
+  # Latih model KNN regresi
+  knn_model <- train(
+    x = training_data,
+    y = training_data$IKP,
+    method = "knn",
+    tuneGrid = data.frame(k = k),
+    trControl = trainControl(method = "none")
+  )
+  
+  # Lakukan prediksi pada data testing
+  predictions <- predict(knn_model, newdata = testing_data)
+  
+  # Hitung metrik evaluasi
+  mae <- mean(abs(predictions - testing_data$Komposit))
+  rmse <- sqrt(mean((predictions - testing_data$Komposit)^2))
+  
+  # Simpan nilai evaluasi
+  mae_values <- c(mae_values, mae)
+  rmse_values <- c(rmse_values, rmse)
+}
+
+# Tampilkan hasil
+result_df <- data.frame(k = 1:5, MAE = mae_values, RMSE = rmse_values)
+print(result_df)
+```
+
+```{r}
+library(ggplot2)
+
+# Buat diagram garis
+ggplot(result_df, aes(x = 1:5, y = mae_values)) +
+  geom_line(color = "blue") +  # Tambahkan garis
+  geom_point(color = "red") +  # Tambahkan titik
+  labs(x = "Nilai k", y = "MAE") +  # Label sumbu
+  ggtitle("Diagram Garis Antara Nilai k dan MAE") +  # Judul plot
+  theme_minimal()  # Tema plot
+ggplot(result_df, aes(x = 1:5, y = rmse_values)) +
+  geom_line(color = "blue") +  # Tambahkan garis
+  geom_point(color = "red") +  # Tambahkan titik
+  labs(x = "Nilai k", y = "MAE") +  # Label sumbu
+  ggtitle("Diagram Garis Antara Nilai k dan RMSE") +  # Judul plot
+  theme_minimal()  # Tema plot
+```
